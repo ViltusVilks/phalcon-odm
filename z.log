@@ -1,0 +1,164 @@
+Sending build context to Docker daemon  13.12MB
+Step 1/20 : ARG PHP_BUILDER_VERSION=7.3
+Step 2/20 : FROM viltusvilks/phalcon-odm-builder:${PHP_BUILDER_VERSION} as builder
+ ---> a87d339a9583
+Step 3/20 : RUN mkdir -p /usr/src         && curl -sSL https://github.com/phalcon/zephir/releases/download/0.12.12/zephir.phar --output /usr/bin/zephir     && chmod +x /usr/bin/zephir     && zephir --version         && echo "Done source fetch"
+ ---> Using cache
+ ---> 4d92614c5c74
+Step 4/20 : COPY cphalcon-4.0.x /usr/src/cphalcon/
+ ---> Using cache
+ ---> d9217a9af565
+Step 5/20 : RUN echo "Stage: Phalcon-extension pre-compile"     && cd /usr/src/cphalcon         && echo " ********** Clenup and regenerate zephir code **********"     && zephir fullclean     && zephir generate -wunused-variable -wnonexistent-function         && echo "Finished Phalcon-extension pre-compile"
+ ---> Using cache
+ ---> 7c97cbbda71e
+Step 6/20 : RUN cd /usr/src/cphalcon  &&  cat /usr/src/cphalcon/ext/phalcon/db/adapter/mongodb/mapreduceresult.zep.c
+ ---> Running in c888e18afe9c
+
+#ifdef HAVE_CONFIG_H
+#include "../../../../ext_config.h"
+#endif
+
+#include <php.h>
+#include "../../../../php_ext.h"
+#include "../../../../ext.h"
+
+#include <Zend/zend_operators.h>
+#include <Zend/zend_exceptions.h>
+#include <Zend/zend_interfaces.h>
+
+#include "kernel/main.h"
+#include "kernel/object.h"
+#include "kernel/memory.h"
+#include "kernel/fcall.h"
+
+
+/**
+ * Result class for mapReduce command results.
+ *
+ * This class allows for iteration of mapReduce results irrespective of the
+ * output method (e.g. inline, collection) via the IteratorAggregate interface.
+ * It also provides access to command statistics.
+ *
+ * @api
+ * @see \MongoDB\Collection::mapReduce()
+ * @see https://docs.mongodb.com/manual/reference/command/mapReduce/
+ */
+ZEPHIR_INIT_CLASS(Phalcon_Db_Adapter_MongoDB_MapReduceResult) {
+
+	ZEPHIR_REGISTER_CLASS(Phalcon\\Db\\Adapter\\MongoDB, MapReduceResult, phalcon, db_adapter_mongodb_mapreduceresult, phalcon_db_adapter_mongodb_mapreduceresult_method_entry, 0);
+
+	zend_declare_property_null(phalcon_db_adapter_mongodb_mapreduceresult_ce, SL("_getIterator"), ZEND_ACC_PRIVATE);
+
+	zend_declare_property_null(phalcon_db_adapter_mongodb_mapreduceresult_ce, SL("_executionTimeMS"), ZEND_ACC_PRIVATE);
+
+	zend_declare_property_null(phalcon_db_adapter_mongodb_mapreduceresult_ce, SL("_counts"), ZEND_ACC_PRIVATE);
+
+	zend_declare_property_null(phalcon_db_adapter_mongodb_mapreduceresult_ce, SL("_timing"), ZEND_ACC_PRIVATE);
+
+	zend_class_implements(phalcon_db_adapter_mongodb_mapreduceresult_ce, 1, zend_ce_aggregate);
+	return SUCCESS;
+
+}
+
+/**
+ * Constructor.
+ *
+ * @internal
+ * @param callable $getIterator Callback that returns a Traversable for mapReduce results
+ * @param stdClass $result      Result document from the mapReduce command
+ */
+PHP_METHOD(Phalcon_Db_Adapter_MongoDB_MapReduceResult, __construct) {
+
+	zval *getIterator, getIterator_sub, *result, result_sub, _0, _1;
+	zval *this_ptr = getThis();
+
+	ZVAL_UNDEF(&getIterator_sub);
+	ZVAL_UNDEF(&result_sub);
+	ZVAL_UNDEF(&_0);
+	ZVAL_UNDEF(&_1);
+
+	zephir_fetch_params_without_memory_grow(2, 0, &getIterator, &result);
+
+
+
+	zephir_update_property_zval(this_ptr, SL("_getIterator"), getIterator);
+	zephir_read_property(&_0, result, SL("timeMillis"), PH_NOISY_CC | PH_READONLY);
+	zephir_update_property_zval(this_ptr, SL("_executionTimeMS"), &_0);
+	zephir_read_property(&_1, result, SL("counts"), PH_NOISY_CC | PH_READONLY);
+	zephir_update_property_zval(this_ptr, SL("_counts"), &_1);
+
+}
+
+/**
+ * Returns various count statistics from the mapReduce command.
+ *
+ * @return array
+ */
+PHP_METHOD(Phalcon_Db_Adapter_MongoDB_MapReduceResult, getCounts) {
+
+	zval *this_ptr = getThis();
+
+
+	RETURN_MEMBER(getThis(), "_counts");
+
+}
+
+/**
+ * Return the command execution time in milliseconds.
+ *
+ * @return integer
+ */
+PHP_METHOD(Phalcon_Db_Adapter_MongoDB_MapReduceResult, getExecutionTimeMS) {
+
+	zval *this_ptr = getThis();
+
+
+	RETURN_MEMBER(getThis(), "_executionTimeMS");
+
+}
+
+/**
+ * Return the mapReduce results as a Traversable.
+ *
+ * @see http://php.net/iteratoraggregate.getiterator
+ * @return Traversable
+ */
+PHP_METHOD(Phalcon_Db_Adapter_MongoDB_MapReduceResult, getIterator) {
+
+	zval _0;
+	zend_long ZEPHIR_LAST_CALL_STATUS;
+	zval *this_ptr = getThis();
+
+	ZVAL_UNDEF(&_0);
+
+
+	zephir_read_property(&_0, this_ptr, SL("_getIterator"), PH_NOISY_CC | PH_READONLY);
+	ZEPHIR_CALL_USER_FUNC(return_value, &_0);
+	zephir_check_call_status();
+	return;
+
+}
+
+/**
+ * Returns various timing statistics from the mapReduce command.
+ *
+ * Note: timing statistics are only available if the mapReduce command's
+ * "verbose" option was true; otherwise, an empty array will be returned.
+ *
+ * @return array
+ */
+PHP_METHOD(Phalcon_Db_Adapter_MongoDB_MapReduceResult, getTiming) {
+
+	zval *this_ptr = getThis();
+
+
+	RETURN_MEMBER(getThis(), "_timing");
+
+}
+
+Removing intermediate container c888e18afe9c
+ ---> 7de3b0b518c9
+Step 7/20 : RUN die
+ ---> Running in e068b807cde7
+[91m/bin/sh: die: not found
+[0m

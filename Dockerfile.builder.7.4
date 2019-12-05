@@ -1,0 +1,145 @@
+#
+# This is a PHP builder image
+#
+
+ARG PHP_BUILDER_VERSION=7.2
+
+FROM viltusvilks/phalcon-odm-php:${PHP_BUILDER_VERSION}
+RUN echo "Stage: build-dep package install" \
+    && apk --update --no-cache add \
+        git file autoconf automake make gcc g++ re2c linux-headers dpkg-dev dpkg \
+        #nghttp2-dev libaio-dev \
+        openssl-dev \
+        freetype-dev libjpeg-turbo-dev libpng-dev \
+    \
+	&& echo "Finished installing packages"
+
+
+########################################################################################
+### Because we can fail on compile use separate RUN commands to utilize Docker cache ###
+########################################################################################
+
+RUN echo "Enable shared modules before compilation" \
+    \
+    && docker-php-ext-enable --ini-name 00_boot_ext.ini opcache sockets pcntl posix \
+    && docker-php-ext-enable --ini-name 01_subsystems_ext.ini session pdo mbstring phar iconv gettext fileinfo curl dom xmlreader xmlwriter openssl json \
+    && php -m \
+    \
+    echo "Done"
+
+### Grab sources ###
+RUN mkdir -p /usr/src \
+    && cd /usr/src \
+    && git clone git://github.com/phalcon/php-zephir-parser.git \
+    \
+    && cd /usr/src \
+    && git clone https://github.com/jbboehr/php-psr.git \
+    \
+    #&& cd /usr/src \
+    #&& git clone https://github.com/swoole/swoole-src.git \
+    \
+    && cd /usr/src \
+    && git clone --depth 1 --single-branch --branch "develop" https://github.com/phpredis/phpredis.git \
+    \
+    && cd /usr/src \
+    && git clone --depth 1 --single-branch --branch "v3" https://github.com/igbinary/igbinary.git \
+    \
+    && cd /usr/src && git clone https://github.com/mongodb/mongo-php-driver.git \
+    && cd mongo-php-driver \
+    && git submodule update --init \ 
+    \    
+    && echo "Done source fetch"
+
+ENV EXT_PHP_CFLAGS="-fstack-protector-strong -fpic -fpie -O2 -fvisibility=hidden -Wl,--gc-sections -Wl,--strip-all"
+ENV EXT_PHP_CPPFLAGS="${PHP_CFLAGS} -fvisibility-inlines-hidden"
+    
+### Build Zephir Parser extension ###    
+RUN echo "Stage: zephir-parser-extension compile" \
+    && cd /usr/src/php-zephir-parser \
+    && phpize \
+    && CFLAGS="${EXT_PHP_CFLAGS}" && CPPFLAGS="${EXT_PHP_CFLAGS}" && export CFLAGS CPPFLAGS \
+    && ./configure \
+    && make && make install \  
+    && echo "Finished: zephir-parser-extension compile"
+    
+### Build PSR extension ###    
+RUN echo "Stage: psr-extension compile" \    
+    && cd /usr/src/php-psr \
+    && phpize \
+    && CFLAGS="${EXT_PHP_CFLAGS}" && CPPFLAGS="${EXT_PHP_CFLAGS}" && export CFLAGS CPPFLAGS \
+    && ./configure \
+    && make && make install \  
+    && echo "Finished: psr-extension compile"
+
+### Build Igbinary extension ###
+RUN echo "Stage: Igbinary-extension compile" \
+    && cd /usr/src/igbinary \
+    && phpize \
+    && CFLAGS="${EXT_PHP_CFLAGS}" && CPPFLAGS="${EXT_PHP_CFLAGS}" && export CFLAGS CPPFLAGS \
+    && ./configure \
+    && make && make install \  
+    && echo "Finished: Igbinary-extension compile"
+  
+### Build Redis extension ###  
+RUN echo "Stage: Redis-extension compile" \ 
+    && cd /usr/src/phpredis \
+    && phpize \
+    && CFLAGS="${EXT_PHP_CFLAGS}" && CPPFLAGS="${EXT_PHP_CFLAGS}" && export CFLAGS CPPFLAGS \
+    && ./configure --enable-redis-igbinary \
+    && make \
+    && make install \
+    && echo "Finished: redis-extension compile"
+
+### Build MongoDB extension ###
+RUN echo "Stage: mongodb-extension compile" \
+    && cd /usr/src/mongo-php-driver \
+    && phpize \
+    && CFLAGS="${EXT_PHP_CFLAGS}" && CPPFLAGS="${EXT_PHP_CFLAGS}" && export CFLAGS CPPFLAGS \
+    && ./configure \
+    && make all && make install \  
+    && echo "Finished: mongodb-extension compile"
+    
+### Build Swoole extension (quite big, 13Mb for swoole.so) ###
+ENV SWOOLE=0
+RUN if [ "${SWOOLE}" -eq "1" ]; then \
+    ( \
+        echo "Stage: swoole-extension compile" \
+        && cd /usr/src/swoole-src \
+        && phpize \
+        #&& CFLAGS="${EXT_PHP_CFLAGS}" && CPPFLAGS="${EXT_PHP_CFLAGS}" && export CFLAGS CPPFLAGS \
+        && ./configure --enable-openssl --enable-http2 --enable-sockets \ 
+        && make && make install \  
+        && echo "Finished: swoole-extension compile" \
+    ); \
+    else \
+        echo "Swoole skipped"; fi 
+
+# TODO gd
+#&& docker-php-ext-configure gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/ \    
+
+#### Playground ####
+    
+RUN echo "tests" \
+    \
+    # todo gd
+    && docker-php-ext-enable --ini-name 10_zephyr_ext.ini psr igbinary zephir_parser \
+    && docker-php-ext-enable --ini-name 20_drivers_ext.ini redis mongodb \
+    #docker-php-source extract \
+	#&& cd /usr/src/php \
+	#&& ./configure --help \
+    #&& set -x \
+    && ls -la "${PHP_INI_DIR}" \
+    && ls -la "${PHP_INI_DIR}/conf.d" \
+    #&& cat "${PHP_INI_DIR}/conf.d/10_system_ext.ini" \
+    #&& cat "${PHP_INI_DIR}/conf.d/20_drivers_ext.ini" \
+	&& echo "Finished tests"
+
+RUN echo "Stage: binaries & lib version check" \
+    #&& apk add --update --no-cache binutils \
+    && find /usr/local/lib/php/20180731 -name *.so \
+    && php -v  \
+    && php -m  \
+    #&& ls -la /usr/local/lib/php/20180731 \
+    #&& strip --strip-debug /usr/local/lib/php/20180731/redis.so -o /usr/local/lib/php/20180731/redis.stripped.so \
+    && ls -la /usr/local/lib/php/20180731 \
+    && echo "Finished extension build" 

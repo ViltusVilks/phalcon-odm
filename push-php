@@ -1,0 +1,5 @@
+#!/bin/sh
+
+docker push viltusvilks/phalcon-odm-php:7.4
+#docker push viltusvilks/phalcon-odm-php:7.3
+

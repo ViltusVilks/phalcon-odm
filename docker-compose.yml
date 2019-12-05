@@ -1,0 +1,30 @@
+version: '3'
+
+services:
+  phalcon-odm-php:
+    build:
+      dockerfile: Dockerfile.php.v3
+      context: .
+    
+  pom:
+    image: viltusvilks/phalcon-odm:alpine-nginx 
+    container_name: pom
+    volumes:
+      #- phalcon-wrench-www:/var/www
+      - ./phalcon-wrench:/var/www
+    environment:
+      - TEST=somevar
+    ports:
+      - 1111:80
+    networks:
+      - backend
+      
+# volumes:
+  # phalcon-wrench-www:
+    # driver: local-persist
+    # driver_opts:
+      # mountpoint: ./phalcon-wrench
+
+networks:
+  backend:
+  

@@ -1,0 +1,17 @@
+#!/bin/sh
+#### 7.3 ####
+#docker build -t viltusvilks/phalcon-odm-php:7.3 -f Dockerfile.php.7.3 .
+#docker build -t viltusvilks/phalcon-odm-builder:7.3 --build-arg PHP_VERSION=7.3 --build-arg BUILD_SWOOLE=1 -f Dockerfile.builder.php7 .
+#docker build -t viltusvilks/phalcon-odm-builder:7.3 --build-arg PHP_VERSION=7.3 --build-arg BUILD_SWOOLE=0 -f Dockerfile.builder.php7 .
+#docker build -t viltusvilks/phalcon-odm:v4-php7.3  --build-arg PHP_BUILDER_VERSION=7.3 -f Dockerfile.phalcon.v4 .
+#docker push viltusvilks/phalcon-odm:v4-php7.3
+
+#### 7.4 Not working ####
+#docker build -t viltusvilks/phalcon-odm-php:7.4 -f .\Dockerfile.php.7.4 .
+#docker build -t viltusvilks/phalcon-odm-builder:7.4 --build-arg PHP_VERSION=7.4 -f .\Dockerfile.builder.php7 .
+
+docker build -t viltusvilks/phalcon-odm:v4-php7.4 --build-arg PHP_BUILDER_VERSION=7.4 -f Dockerfile.phalcon.v4 .
+
+#docker rm $(docker ps -a -f status=exited -f status=created -q)
+#docker rmi $(docker images -q -f dangling=true)
+

@@ -1,0 +1,2 @@
+#!/bin/sh
+docker build -t viltusvilks/phalcon-odm-nginx:nossl -f ./Dockerfile.nginx .

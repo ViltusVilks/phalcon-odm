@@ -1,0 +1,56 @@
+
+Size reduction in .so
+# Remove: Phalcon\Validation - 120kb, it is needed because executes on low-level. but disabled to speed up compile
+
+
+;docker build -t viltusvilks/phalcon-odm-builder:7.4 -f .\Dockerfile.builder.7.4 .
+
+
+
+
+#### NGINX ####
+docker build -t viltusvilks/phalcon-odm-nginx:nossl -f .\Dockerfile.nginx .
+
+#### 7.2 ####
+docker build -t viltusvilks/phalcon-odm-php:7.2 -f .\Dockerfile.php.7.2 .
+docker build -t viltusvilks/phalcon-odm-builder:7.2 --build-arg PHP_VERSION=7.2 -f .\Dockerfile.builder.php7 .
+docker build -t viltusvilks/phalcon-odm:v4-php7.2  --build-arg PHP_BUILDER_VERSION=7.2 -f .\Dockerfile.phalcon.v4 .
+
+
+#### 7.3 ####
+docker build -t viltusvilks/phalcon-odm-php:7.3 -f Dockerfile.php.7.3 .
+docker build -t viltusvilks/phalcon-odm-builder:7.3 --build-arg PHP_VERSION=7.3 --build-arg BUILD_SWOOLE=1 -f Dockerfile.builder.php7 .
+docker build -t viltusvilks/phalcon-odm-builder:7.3 --build-arg PHP_VERSION=7.3 --build-arg BUILD_SWOOLE=0 -f Dockerfile.builder.php7 .
+docker build -t viltusvilks/phalcon-odm:v4-php7.3  --build-arg PHP_BUILDER_VERSION=7.3 -f Dockerfile.phalcon.v4 .
+docker push viltusvilks/phalcon-odm:v4-php7.3
+
+#### 7.4 Not working ####
+docker build -t viltusvilks/phalcon-odm-php:7.4 -f .\Dockerfile.php.7.4 .
+docker build -t viltusvilks/phalcon-odm-builder:7.4 --build-arg PHP_VERSION=7.4 -f .\Dockerfile.builder.php7 .
+docker build -t viltusvilks/phalcon-odm:v4-php7.4 --build-arg PHP_BUILDER_VERSION=7.4 -f .\Dockerfile.phalcon.v4 .
+
+
+docker rm $(docker ps -a -f status=exited -f status=created -q)
+docker rmi $(docker images -q -f dangling=true)
+
+
+
+
+
+
+RUN if [ "1" -eq "0" ]; then \
+    ( \
+        echo "Do some pre-checked" \
+        && set -xe \
+        && rm /tmp/extensions/calendar.so \
+        #&& rm /tmp/extensions/readline.so \
+        && mkdir -p $(php-config --extension-dir) \
+        && mv /tmp/extensions/* $(php-config --extension-dir) \
+        && find /usr/local/lib/php -name *.* \
+    ) fi
+    
+    
+PHP Fatal error:  Declaration of Phalcon\Mvc\Collection\Manager::getCustomEventsManager(Phalcon\Mvc\CollectionInterface $model) must be compatible with Phalcon\Mvc\Collection\ManagerInterface::getCustomEventsManager(Phalcon\Mvc\CollectionInterface $model): Phalcon\Events
+\ManagerInterface in Unknown on line 0
+PHP Fatal error:  Declaration of Phalcon\Mvc\Collection\Manager::getConnection(Phalcon\Mvc\CollectionInterface $model) must be compatible with Phalcon\Mvc\Collection\ManagerInterface::getConnection(Phalcon\Mvc\CollectionInterface $model): NULL in Unknown on line 0
+Phalcon v4.0.0-alpha.2    

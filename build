@@ -1,0 +1,17 @@
+#!/bin/sh
+
+OS=alpine-nginx
+TAG="0.0.1"
+TIMEZONE="Europe/Riga"
+
+# build
+docker rmi $(docker images -qa -f 'dangling=true')
+docker build -t viltusvilks/phalcon-odm:$TAG-$OS ./alpine-nginx-phpfpm
+
+# image push
+if [ "$#" -ne 0 ] && [ "$1" = "push" ]; then
+    echo "\n-> Build success\n"
+    docker tag viltusvilks/phalcon-odm:$TAG-$OS viltusvilks/phalcon-odm:$OS
+    docker tag viltusvilks/phalcon-odm:$TAG-$OS viltusvilks/phalcon-odm:latest
+    docker push viltusvilks/phalcon-odm
+fi

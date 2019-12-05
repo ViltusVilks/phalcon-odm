@@ -1,0 +1,168 @@
+#
+# This is a custum and slimmed down PHP base image
+#
+
+# Customize PHP FPM dockerfile to slim down unneeded packages
+# Source https://github.com/docker-library/php/blob/1eb2c0ab518d874ab8c114c514e16aa09394de14/7.3/alpine3.8/fpm/Dockerfile
+FROM alpine:3.10
+
+# dependencies required for running "phpize"
+# these get automatically installed and removed by "docker-php-ext-*" (unless they're already installed)
+ENV PHPIZE_DEPS \
+		autoconf \
+		dpkg-dev dpkg \
+		file \
+		g++ \
+		gcc \
+		libc-dev \
+		make \
+		pkgconf \
+		re2c
+
+# persistent / runtime deps
+RUN apk add --no-cache --virtual .persistent-deps \
+		ca-certificates \
+		curl \
+		git \
+		tar \
+		xz \
+		openssl
+
+# ensure www-data user exists
+RUN set -x \
+	&& addgroup -g 82 -S www-data \
+	&& adduser -u 82 -D -S -G www-data www-data
+
+ENV	PHP_VERSION 7.4.0
+
+RUN set -xe; \
+	\
+	mkdir -p /usr/src; \
+	cd /usr/src; \
+	\
+	apk add --no-cache --virtual .fetch-deps \
+		make autoconf \
+	; \
+	\
+	# Make snapshot of xz archive on which are working docker-php-*  scripts
+	git clone --depth 1 --single-branch --branch "PHP-7.4" https://github.com/php/php-src.git php \
+	&& cd /usr/src/php \
+	&& ./buildconf --force \
+	&& rm -rf .git \
+	&& cd /usr/src \
+	&& tar -cJf php.tar.xz php \
+	&& rm -rf php \
+	\
+	apk del .fetch-deps
+
+ENV PHP_EXTRA_CONFIGURE_ARGS="--enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data --disable-cgi"
+ENV	PHP_CFLAGS="-fstack-protector-strong -fpic -fpie -O2 -Wl,--gc-sections -Wl,--strip-all"
+ENV	PHP_CPPFLAGS="${PHP_CFLAGS}" 
+ENV	PHP_LDFLAGS="-Wl,-O1 -Wl,--hash-style=both -pie" 
+ENV	PHP_INI_DIR /usr/local/etc/php
+
+RUN mkdir -p $PHP_INI_DIR/conf.d
+COPY docker-php-* /usr/local/bin/
+
+RUN set -xe \
+	&& apk add --no-cache --virtual .build-deps \
+		$PHPIZE_DEPS \
+		argon2-dev \
+        bison \
+		coreutils \
+		curl-dev \
+		libedit-dev \
+		libxml2-dev \
+		openssl-dev \
+        gettext-dev \
+        oniguruma-dev \
+        \
+		freetype-dev \
+		libwebp-dev \
+		libjpeg-turbo-dev \
+		libpng-dev \
+	\
+	&& export CFLAGS="$PHP_CFLAGS" \
+		CPPFLAGS="$PHP_CPPFLAGS" \
+		LDFLAGS="$PHP_LDFLAGS" \
+        && ls -la /usr/src \
+	&& chmod +x /usr/local/bin/docker-php-source \
+	&& docker-php-source extract \
+	&& cd /usr/src/php \
+	&& gnuArch="$(dpkg-architecture --query DEB_BUILD_GNU_TYPE)" \
+#	&& ./configure --help | grep png \
+	&& ./configure \
+		--build="$gnuArch" \
+		--with-config-file-path="$PHP_INI_DIR" \
+		--with-config-file-scan-dir="$PHP_INI_DIR/conf.d" \
+		\
+# make sure invalid --configure-flags are fatal errors intead of just warnings
+		--enable-option-checking=fatal \
+		\
+# https://github.com/docker-library/php/issues/439
+		--with-mhash \
+		\
+		--enable-mbstring=shared \
+		\
+		--with-curl=shared \
+		--with-libedit \
+		--with-openssl=shared \
+		--with-zlib=shared \
+        \
+# Customization, we need them shared so php and php-fpm binaries can be as little as possible
+        --disable-phpdbg \
+        --with-layout=GNU \
+		--with-pic \
+        \
+        --disable-short-tags \
+        --enable-session=static \
+        --enable-phar=shared \
+		--enable-posix=shared \
+        --enable-dom=shared \
+        --enable-fileinfo=shared \
+        --with-iconv=shared \
+        --enable-json=shared \
+        --enable-calendar=shared \
+        --enable-sockets=shared \
+        --enable-pcntl=shared \
+        --enable-pdo=shared \
+        --with-gettext=shared \
+        --enable-xmlreader=shared \
+		--enable-xmlwriter=shared \
+        --with-readline=shared \
+        \
+		--enable-gd=shared \
+			--with-freetype \
+			--disable-gd-jis-conv \
+			--with-jpeg \
+			#--with-png \
+			--with-webp \
+        \
+        --without-pear \
+        --without-sqlite3 \
+        --disable-ctype \
+        --without-pdo-sqlite \
+        --disable-simplexml \
+		\
+		$PHP_EXTRA_CONFIGURE_ARGS \
+	&& make -j "$(nproc)" \
+	&& make install \
+	&& { find /usr/local/bin /usr/local/sbin -type f -perm +0111 -exec strip --strip-all '{}' + || true; } \
+	&& make clean \
+	\
+# https://github.com/docker-library/php/issues/692 (copy default example "php.ini" files somewhere easily discoverable)
+	&& cp -v php.ini-* "$PHP_INI_DIR/" \
+	\
+	&& cd / \
+	&& docker-php-source delete \
+	\
+	&& runDeps="$( \
+		scanelf --needed --nobanner --format '%n#p' --recursive /usr/local \
+			| tr ',' '\n' \
+			| sort -u \
+			| awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }' \
+	)" \
+	&& apk add --no-cache --virtual .php-rundeps $runDeps \
+	\
+	&& apk del .build-deps
+

@@ -1,0 +1,185 @@
+#
+# This is a final Phalcon-ODM image using multi-stage
+#
+
+# PHP 7.2 is currently only working version for MongoDB
+ARG PHP_BUILDER_VERSION=7.3
+FROM viltusvilks/phalcon-odm-builder:${PHP_BUILDER_VERSION} as builder
+
+### Grab sources ###
+RUN mkdir -p /usr/src \
+    \
+    && curl -sSL https://github.com/phalcon/zephir/releases/download/0.12.12/zephir.phar --output /usr/bin/zephir \    
+    && chmod +x /usr/bin/zephir \
+    && zephir --version \
+    \
+    && echo "Done source fetch"
+
+### Build Phalcon extension ###
+# Custom sources
+COPY cphalcon-4.0.x /usr/src/cphalcon/
+
+RUN echo "Stage: Phalcon-extension pre-compile" \
+    && cd /usr/src/cphalcon \
+    \
+    # Regenerate Zephir stuff
+    && echo " ********** Clenup and regenerate zephir code **********" \
+    && zephir fullclean \
+    #&& find . -name "*.zep.*" -print0 | xargs -0 rm \
+    && zephir generate -wunused-variable -wnonexistent-function \
+    \
+    && echo "Finished Phalcon-extension pre-compile"
+
+#RUN cd /usr/src/cphalcon \
+# &&  cat /usr/src/cphalcon/ext/phalcon/db/adapter/mongodb/mapreduceresult.zep.c
+#RUN die
+   
+RUN echo " ********** Custom compile **********" \
+    # Release build: optimized, lto, no-debug 
+    && cd /usr/src/cphalcon/ext && export CC="gcc" \
+	&& export CFLAGS="-mtune=native -fomit-frame-pointer -flto -O2 -fvisibility=hidden -Wparentheses -Wl,--gc-sections -Wl,--strip-all -DZEPHIR_RELEASE=1" \
+	&& make clean && phpize --clean && phpize \
+    && ./configure --enable-phalcon \
+    && cat /usr/src/cphalcon/ext/phalcon/db/adapter/mongodb/gridfs/readablestream.zep.c \
+    && time make -j $(nproc) && make install \    
+    && echo "Finished: Phalcon-extension compile"
+
+RUN echo "Stage: post-build and bin/lib version check" \
+    #&& php -v  \
+    #&& php -m  \
+    \
+    # Clean before copy
+    && ls -la /usr/local/lib/php/2*/*.so \
+    \
+    && rm -rf /usr/local/lib/php/build \
+    && rm -rf /usr/local/lib/php/2*/*.a \
+    && rm -rf /usr/local/lib/php/2*/pdo.so \
+    && rm -rf /usr/local/lib/php/2*/caldendar.so \
+    #&& rm -rf /usr/local/lib/php/2*/phar.so \
+    #&& rm -rf /usr/local/lib/php/2*/zephir_parser.so \
+    #&& ls -la /usr/local/lib/php/20170718 \
+    && echo "Finished extension build"
+    
+    
+### Release Image ###
+FROM viltusvilks/phalcon-odm-nginx:nossl  
+ENV TZ="Europe/Riga" \
+  COMPOSER_ALLOW_SUPERUSER=1 \
+  PHP_CONF_D=/usr/local/etc/php/conf.d  \
+  PHPFPM_CONF_D=/usr/local/etc/php-fpm.d
+
+# Copy Binaries 
+# We need config to detect directories so we can reconstruct  
+#COPY --from=builder /usr/local/bin/php-config /usr/local/bin/php-config
+COPY --from=builder /usr/local/sbin/php-fpm /usr/local/bin    
+COPY --from=builder /usr/local/bin/php /usr/local/bin    
+#COPY --from=builder /usr/local/lib/php/2*/*.so /tmp/extensions/
+COPY --from=builder /usr/local/lib/php /usr/local/lib/php
+
+ 
+RUN if [ "1" -eq "1" ]; then \
+    ( \
+        echo "-- Adding packages" \
+        && apk add --update --no-cache \
+            \
+            # Base packages
+            ca-certificates \
+            libstdc++ \
+            curl \
+            argon2-libs \
+            openssl \
+            libedit \
+			libxml2 \
+			\
+            # GD
+            freetype \
+            libpng \
+            libjpeg-turbo \
+			libwebp \
+			\
+            # Swoole deps
+            #nghttp2-libs \
+            # Background helpers
+            dcron \
+            rsync \
+            sshpass \
+            openssh-client \
+        \
+        && rm -rf /var/cache/apk/* \
+            /tmp/* \
+            /var/tmp/* \
+        && echo "Finished with packages" \
+    ) fi
+
+# Post configuration    
+COPY conf /usr/src/app
+
+RUN echo "-- Post configuration --" \
+    && addgroup -g 82 -S www-data \
+    && adduser -u 82 -D -S -G www-data www-data \
+    # Reconfigure PHP
+    && ln -sf /usr/local/bin/php-fpm /usr/local/bin/php-fpm7 \ 
+	&& mkdir -p ${PHP_CONF_D} \
+	&& mkdir -p ${PHPFPM_CONF_D} \
+	&& mkdir -p /var/log \
+    \
+    && ls -la /usr/local/lib/php/2*/*.so \
+    && ls -la /usr/local/bin/php* \
+    \
+    # Core
+    && echo extension=sockets.so | tee -a ${PHP_CONF_D}/01_sockets.ini \
+    && echo extension=posix.so | tee -a ${PHP_CONF_D}/01_posix.ini \
+    && echo extension=pcntl.so | tee -a ${PHP_CONF_D}/01_pcntl.ini \
+    && echo extension=dom.so | tee -a ${PHP_CONF_D}/01_dom.ini \
+    #&& echo extension=session.so | tee -a ${PHP_CONF_D}/10_session.ini \
+    && echo -e "extension=igbinary.so\nsession.serialize_handler=igbinary" | tee -a ${PHP_CONF_D}/01_igbinary.ini \
+    && echo zend_extension=opcache.so | tee -a ${PHP_CONF_D}/01_opcache.ini \
+    && echo extension=mbstring.so | tee -a ${PHP_CONF_D}/01_mbstring.ini \
+    && echo extension=gettext.so | tee -a ${PHP_CONF_D}/01_gettext.ini \
+    && echo extension=fileinfo.so | tee -a ${PHP_CONF_D}/01_fileinfo.ini \
+    && echo extension=iconv.so | tee -a ${PHP_CONF_D}/01_iconv.ini \
+    \
+    # Subsystems
+    && echo extension=openssl.so | tee -a ${PHP_CONF_D}/10_openssl.ini \
+    && echo extension=curl.so | tee -a ${PHP_CONF_D}/10_curl.ini \
+    && echo extension=json.so | tee -a ${PHP_CONF_D}/10_json.ini \
+    && echo extension=gd.so | tee -a ${PHP_CONF_D}/10_gd.ini \
+    && echo extension=phar.so | tee -a ${PHP_CONF_D}/10_phar.ini \
+    && echo extension=xmlreader.so | tee -a ${PHP_CONF_D}/10_xmlreader.ini \
+    && echo extension=xmlwriter.so | tee -a ${PHP_CONF_D}/10_xmlwriter.ini \
+    && echo extension=zlib.so | tee -a ${PHP_CONF_D}/10_zlib.ini \
+    \
+    # Drivers
+    #&& echo extension=intl.so | tee -a ${PHP_CONF_D}/20_intl.ini \
+    #&& echo extension=gd.so | tee -a ${PHP_CONF_D}/20_gd.ini \
+    && echo extension=redis.so | tee -a ${PHP_CONF_D}/20_redis.ini \
+    && echo extension=mongodb.so | tee -a ${PHP_CONF_D}/20_mongodb.ini \
+    && echo extension=psr.so | tee -a ${PHP_CONF_D}/20_psr.ini \
+    \
+    # Frameworks
+    #&& echo extension=swoole.so | tee -a ${PHP_CONF_D}/30_swoole.ini \
+	#&& echo extension=zephir_parser.so | tee -a ${PHP_CONF_D}/30_zephir_parser.ini \
+    && echo extension=phalcon.so | tee -a ${PHP_CONF_D}/50_phalcon.ini \   
+    \
+    # Phalcon custom startup stack (nginx + php-fpm + dcron)
+    && mv -f /usr/src/app/docker-entrypoint.sh /docker-entrypoint.sh \
+    && chmod +x /docker-entrypoint.sh \
+    \
+    # Nginx configaration
+    && mv -f /usr/src/app/nginx.conf /etc/nginx/nginx.conf \
+    && mv -f /usr/src/app/gzip.conf /etc/nginx/conf.d/gzip.conf \
+    && mv -f /usr/src/app/nginx-site.default.conf /etc/nginx/conf.d/default.conf \
+	\
+	# PHP and PHP-FPM
+    #&& mv -f /usr/src/app/php-fpm.conf ${PHPFPM_CONF_D}/www.conf \
+    && mv -f /usr/src/app/php-fpm.conf /usr/local/etc/php-fpm.conf \
+	\
+	&& rm -rf /usr/src/app \
+    && php -r 'echo "Phalcon v".Phalcon\Version::get().PHP_EOL;' \
+	&& php -v \
+	&& php -m \
+	&& echo "*** Finished all checks"
+    
+EXPOSE 80
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/docker-entrypoint.sh"]

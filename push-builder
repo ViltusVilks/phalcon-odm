@@ -1,0 +1,4 @@
+#!/bin/sh
+
+docker push viltusvilks/phalcon-odm-builder:7.4
+

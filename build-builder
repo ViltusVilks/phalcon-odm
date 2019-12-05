@@ -1,0 +1,7 @@
+#!/bin/sh
+
+#docker build -t viltusvilks/phalcon-odm-builder:7.3 --build-arg PHP_VERSION=7.3 --build-arg BUILD_SWOOLE=0 -f Dockerfile.builder.php7 .
+#docker push viltusvilks/phalcon-odm-builder:7.3
+
+docker build -t viltusvilks/phalcon-odm-builder:7.4 --build-arg PHP_VERSION=7.4 --build-arg BUILD_SWOOLE=0 -f Dockerfile.builder.php7 .
+#docker push viltusvilks/phalcon-odm-builder:7.3
